@@ -6,7 +6,12 @@
 package org.gephi.ui.importer.plugin;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.Charset;
+import java.util.List;
 import java.util.Map;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -14,7 +19,6 @@ import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
-import org.gephi.io.importer.api.ColumnDraft;
 import org.gephi.io.importer.api.ContainerLoader;
 import org.gephi.io.importer.api.EdgeDraft;
 import org.gephi.io.importer.api.ElementDraft;
@@ -36,11 +40,11 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
        
     private Report report;
     private ProgressTicket progressTicket;
-    private EdgeListSolrImpl solrInfo;
+    private EdgeListSolrImpl solrInfo = new EdgeListSolrImpl();
     private ContainerLoader container;
     private SolrClient client;
     private boolean cancel = false;
-    
+       
     //TempData
     private String timeIntervalStart;
     private String timeIntervalEnd;
@@ -69,35 +73,39 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         }
     }
 
-    private void importData() {
-        //Connect database
-        String url = solrInfo.getServerUrl();
+    private SolrClient getSolrClient(String url) {
+        SolrClient solrClient = null;
         try {
             report.log("Try to connect at " + url);
-            client = new HttpSolrClient.Builder(url).build();
-            client.ping();
+            solrClient = new HttpSolrClient.Builder(url).build();
+            solrClient.ping();
             report.log("Solr connection established");
             
         } catch (SolrServerException | IOException ex) {
-            if (client != null) {
+            if (solrClient != null) {
                 try {
-                    client.close();
+                    solrClient.close();
                     report.log("Solr connection terminated");
                 } catch (Exception e) { /* ignore close errors */ }
             }
             report.logIssue(new Issue("Failed to connect at " + url, Issue.Level.CRITICAL, ex));
         }
-        if (client == null) {
+        if (solrClient == null) {
             report.logIssue(new Issue("Failed to connect at " + url, Issue.Level.CRITICAL));
         }
-
-        report.log(solrInfo.getPropertiesAssociations().getInfos());
-        getNodes(client);
-        getEdges(client);
+        return solrClient;
     }
     
-    private void getNodes(SolrClient client) {
+    private void importData() {
 
+        report.log(solrInfo.getPropertiesAssociations().getInfos());
+        getNodes();
+        getEdges();
+    }
+    
+    private void getNodes() {
+
+        client = getSolrClient(this.getSolrInfo().getNodeUrl());
         //Factory
         ElementDraft.Factory factory = container.factory();
 
@@ -107,8 +115,7 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         SolrQuery solrQuery = null;
         QueryResponse response = null;
         try {
-            solrQuery = new SolrQuery();
-            solrQuery.setQuery(solrInfo.getNodeQuery());
+            solrQuery = getSolrQuery(solrInfo.getNodeQuery());
             response = client.query(solrQuery);
         } catch (SolrServerException | IOException ex) {
             report.logIssue(new Issue("Failed to execute Node query", Issue.Level.SEVERE, ex));
@@ -120,7 +127,7 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         for (SolrDocument doc : list) {
             String id = (String) doc.getFirstValue("id");
             NodeDraft node = factory.newNodeDraft(id);
-            for (Map.Entry<String, Object> entry : doc.getFieldValueMap().entrySet()) {
+            for (Map.Entry<String, Object> entry : doc.entrySet()) {
                 NodeProperties p = properties.getNodeProperty(entry.getKey());
                 if (p != null) {
                     injectNodeProperty(p, entry.getValue(), node);
@@ -133,8 +140,10 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         }
     }
 
-    private void getEdges(SolrClient client) {
+    private void getEdges() {
 
+        client = getSolrClient(solrInfo.getEdgeUrl());
+        
         //Factory
         ElementDraft.Factory factory = container.factory();
 
@@ -144,8 +153,7 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         SolrQuery solrQuery = null;
         QueryResponse response = null;
         try {
-            solrQuery = new SolrQuery();
-            solrQuery.setQuery(solrInfo.getEdgeQuery());
+            solrQuery = getSolrQuery(solrInfo.getEdgeQuery());
             response = client.query(solrQuery);
         } catch (SolrServerException | IOException ex) {
             report.logIssue(new Issue("Failed to execute Node query", Issue.Level.SEVERE, ex));
@@ -157,7 +165,7 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
         for (SolrDocument doc : list) {
             String id = (String) doc.getFirstValue("id");
             EdgeDraft edge = factory.newEdgeDraft(id);
-            for (Map.Entry<String, Object> entry : doc.getFieldValueMap().entrySet()) {
+            for (Map.Entry<String, Object> entry : doc.entrySet()) {
                 EdgeProperties p = properties.getEdgeProperty(entry.getKey());
                 if (p != null) {
                     injectEdgeProperty(p, entry.getValue(), edge);
@@ -253,6 +261,7 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
     }
 
     private void injectEdgeProperty(EdgeProperties p, Object value, EdgeDraft edgeDraft) {
+        report.log("injectEdgeProperty:value=" + value);
         switch (p) {
             case LABEL:
                 String label = (String) value;
@@ -261,27 +270,27 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
                 }
                 break;
             case SOURCE:
-                String source = (String) value;
+                String source = value.toString();
                 if (source != null && !source.isEmpty()) {
                     NodeDraft sourceNode = container.getNode(source);
                     edgeDraft.setSource(sourceNode);
                 }
                 break;
             case TARGET:
-                String target = (String) value;
+                String target = value.toString();
                 if (target != null && !target.isEmpty()) {
                     NodeDraft targetNode = container.getNode(target);
                     edgeDraft.setTarget(targetNode);
                 }
                 break;
             case WEIGHT:
-                float weight = (Float) value;
+                Double weight = new Double(value.toString());
                 if (weight != 0) {
                     edgeDraft.setWeight(weight);
                 }
                 break;
             case COLOR:
-                String color = (String) value;
+                String color = value.toString();
                 if (color != null) {
                     String[] rgb = color.split(",");
                     if (rgb.length == 3) {
@@ -292,25 +301,25 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
                 }
                 break;
             case START:
-                String start = (String) value;
+                String start = value.toString();
                 if (start != null) {
                     timeIntervalStart = start;
                 }
                 break;
             case START_OPEN:
-                String startOpen = (String) value;
+                String startOpen = value.toString();
                 if (startOpen != null) {
                     timeIntervalStart = startOpen;
                 }
                 break;
             case END:
-                String end = (String) value;
+                String end = value.toString();
                 if (end != null) {
                     timeIntervalEnd = end;
                 }
                 break;
             case END_OPEN:
-                String endOpen = (String) value;
+                String endOpen = value.toString();
                 if (endOpen != null) {
                     timeIntervalEnd = endOpen;
                 }
@@ -339,4 +348,25 @@ public class SolrWizardImporter implements WizardImporter, LongTask {
     public void setProgressTicket(ProgressTicket pt) {
         this.progressTicket = pt;
     }
+
+    public EdgeListSolrImpl getSolrInfo() {
+        return solrInfo;
+    }
+
+    public void setSolrInfo(EdgeListSolrImpl solrInfo) {
+        this.solrInfo = solrInfo;
+    }
+    
+    private SolrQuery getSolrQuery(String queryString) {
+        SolrQuery solrQuery = new SolrQuery();
+        if (queryString != null && !queryString.isEmpty()) {
+            List<NameValuePair> list = URLEncodedUtils.parse(queryString, Charset.defaultCharset());
+            list.stream().forEach((pair) -> {
+                solrQuery.add(pair.getName(), pair.getValue());
+            });
+        }
+        return solrQuery;
+    }
+    
+    
 }

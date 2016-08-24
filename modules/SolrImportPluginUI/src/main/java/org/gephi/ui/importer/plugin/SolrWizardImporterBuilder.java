@@ -15,10 +15,12 @@ import org.openide.util.lookup.ServiceProvider;
 @ServiceProvider(service = WizardImporterBuilder.class)
 public class SolrWizardImporterBuilder implements WizardImporterBuilder {
 
+    @Override
     public WizardImporter buildImporter() {
         return new SolrWizardImporter();
     }
 
+    @Override
     public String getName() {
         return "Solr Wizard";
     }

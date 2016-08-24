@@ -17,12 +17,14 @@ import org.gephi.io.importer.api.PropertiesAssociations.NodeProperties;
  * @author ec2-user
  */
 public class EdgeListSolrImpl {
-    protected String serverUrl = null;
+    //protected String solrCollectionUrl = null;
     
     protected PropertiesAssociations properties = new PropertiesAssociations();
     
+    protected String edgeUrl = null;
     protected String edgeAttributesQuery = null;
     protected String edgeQuery = null;
+    protected String nodeUrl = null;
     protected String nodeAttributesQuery = null;
     protected String nodeQuery = null;
     
@@ -55,15 +57,23 @@ public class EdgeListSolrImpl {
         properties.addEdgePropertyAssociation(EdgeProperties.START, "start_open");
         properties.addEdgePropertyAssociation(EdgeProperties.END_OPEN, "end_open");
     }
+
+    public String getEdgeUrl() {
+        return edgeUrl;
+    }
+
+    public void setEdgeUrl(String edgeUrl) {
+        this.edgeUrl = edgeUrl;
+    }
+
+    public String getNodeUrl() {
+        return nodeUrl;
+    }
+
+    public void setNodeUrl(String nodeUrl) {
+        this.nodeUrl = nodeUrl;
+    }
     
-    public String getServerUrl() {
-        return serverUrl;
-    }
-
-    public void setServerUrl(String serverUrl) {
-        this.serverUrl = serverUrl;
-    }
-
     public PropertiesAssociations getPropertiesAssociations() {
         return properties;
     }

@@ -19,38 +19,60 @@ import org.openide.util.lookup.ServiceProvider;
 @ServiceProvider(service = ImporterWizardUI.class)
 public class SolrImporterWizardUI implements ImporterWizardUI {
 
+    
     private Panel[] panels = null;
     
+    @Override
     public String getDisplayName() {
         return "Solr Importer";
     }
 
+    @Override
     public String getCategory() {
         return "Solr";
     }
 
+    @Override
     public String getDescription() {
         return "Import Solr Data with Solr Query URL";
     }
 
+    @Override
     public WizardDescriptor.Panel[] getPanels() {
        if (panels == null) {
            panels = new Panel[1];
-           panels[0] = new SolrImportWizardPanel1();
+           panels[0] = new SolrImportWizardPanel();
        } 
        return panels;
     }
 
-    public void setup(WizardDescriptor.Panel pnl) {
+    @Override
+    public void setup(WizardDescriptor.Panel panel) {
         
     }
 
-    public void unsetup(WizardImporter importer, Panel Panel) {
-        ((SolrImportWizardPanel1)((Panel) panels[0]).getComponent()).unsetup((SolrWizardImporter) importer);
+    @Override
+    public void unsetup(WizardImporter importer, WizardDescriptor.Panel panel) {
+        SolrWizardImporter solrImporter = (SolrWizardImporter) importer;
+        SolrImportWizardPanel wizardPanel = (SolrImportWizardPanel) panel;
+        SolrImportPanel solrPanel = (SolrImportPanel) wizardPanel.getComponent();
+        
+        String nodeUrl = solrPanel.getNodeUrl();
+        String nodeQuery = solrPanel.getNodeQuery();
+        String edgeUrl = solrPanel.getEdgeUrl();
+        String edgeQuery = solrPanel.getEdgeQuery();        
+        
+        solrImporter.getSolrInfo().setNodeUrl(nodeUrl);
+        solrImporter.getSolrInfo().setNodeQuery(nodeQuery);
+        solrImporter.getSolrInfo().setEdgeUrl(edgeUrl);
+        solrImporter.getSolrInfo().setEdgeQuery(edgeQuery);
+        
+        //((SolrImportWizardPanel)((Panel) panels[0]).getComponent()).unsetup((SolrWizardImporter) importer);
     }
 
-    public boolean isUIForImporter(Importer imprtr) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    @Override
+    public boolean isUIForImporter(Importer importer) {
+        return importer instanceof SolrWizardImporter;
     }
     
 }
